@@ -33,14 +33,68 @@ proof -
   show ?thesis using j0L imp by blast
 qed
 
+(*lemma correct_T0_LR:
+  fixes L R :: "nat ⇒ bool"
+  shows "run L R (T0 as s) = Good as s L R"
+  sorry*)
+
 lemma correct_T0_LR:
   fixes L R :: "nat ⇒ bool"
   shows "run L R (T0 as s) = Good as s L R"
   sorry
 
-lemma bridge_oLpp:
+(*lemma bridge_oLpp:
   "Good as s oL'' ((!) (enc as s kk)) = Good as s oL' ((!) (enc as s kk))"
-  sorry
+  sorry*)
+
+lemma bridge_oLpp_param:
+  fixes j0 :: nat
+  assumes j0L:  "j0 < length (enumL as s kk)"
+  assumes OFF:  "⋀j'. j' < length (enumL as s kk) ⟹ j' ≠ j0
+                 ⟹ Lval_at as s oL'' j' = Lval_at as s oL' j'"
+  assumes AT0:  "Lval_at as s oL'' j0 = Lval_at as s oL' j0"
+  shows "Good as s oL'' ((!) (enc as s kk)) = Good as s oL' ((!) (enc as s kk))"
+proof -
+  have EQ:
+    "(∃j'<length (enumL as s kk). Lval_at as s oL'' j' ∈ set (enumR as s kk)) =
+     (∃j'<length (enumL as s kk). Lval_at as s oL'  j' ∈ set (enumR as s kk))"
+  proof
+    assume "∃j'<length (enumL as s kk). Lval_at as s oL'' j' ∈ set (enumR as s kk)"
+    then obtain j' where j'L: "j' < length (enumL as s kk)"
+                     and Hit: "Lval_at as s oL'' j' ∈ set (enumR as s kk)" by blast
+    consider (J0) "j' = j0" | (OFFC) "j' ≠ j0" by blast
+    then show "∃j'<length (enumL as s kk). Lval_at as s oL' j' ∈ set (enumR as s kk)"
+    proof cases
+      case J0
+      with AT0 Hit j'L show ?thesis by auto
+    next
+      case OFFC
+      with OFF[OF j'L] Hit j'L show ?thesis by auto
+    qed
+  next
+    assume "∃j'<length (enumL as s kk). Lval_at as s oL' j' ∈ set (enumR as s kk)"
+    then obtain j' where j'L: "j' < length (enumL as s kk)"
+                     and Hit: "Lval_at as s oL' j' ∈ set (enumR as s kk)" by blast
+    consider (J0) "j' = j0" | (OFFC) "j' ≠ j0" by blast
+    then show "∃j'<length (enumL as s kk). Lval_at as s oL'' j' ∈ set (enumR as s kk)"
+    proof cases
+      case J0
+      with AT0 Hit j'L show ?thesis by auto
+    next
+      case OFFC
+      with OFF[OF j'L] Hit j'L show ?thesis by auto
+    qed
+  qed
+  thus ?thesis using Good_char_encR by simp
+qed
+
+lemma bridge_oLpp:
+  assumes j0L:  "j0 < length (enumL as s kk)"
+  assumes OFF:  "⋀j'. j' < length (enumL as s kk) ⟹ j' ≠ j0
+                 ⟹ Lval_at as s oL'' j' = Lval_at as s oL' j'"
+  assumes AT0:  "Lval_at as s oL'' j0 = Lval_at as s oL' j0"
+  shows "Good as s oL'' ((!) (enc as s kk)) = Good as s oL' ((!) (enc as s kk))"
+  using bridge_oLpp_param[OF j0L OFF AT0] .
 
 lemma read0_hits_L:
   assumes n_def: "n = length as"
@@ -353,15 +407,21 @@ proof (rule ccontr)
     qed
   qed
 
-  (* With R fixed to enc, Good(y,enc) = Good(oL'',enc) via lev_equiv *)
-  have Good_y_oL''_eq:
-    "Good as s ((!) y) ((!) ?x) = Good as s oL'' ((!) ?x)"
-    using Good_char_encR lev_equiv by simp
+  have OFF: "⋀j'. j' < length (enumL as s kk) ⟹ j' ≠ j0
+           ⟹ Lval_at as s oL'' j' = Lval_at as s oL' j'"
+    by (simp add: Lval_oL'oL''_off_j0)
 
-  (* Bridge oL'' ↔ oL' (top-level lemma) *)
+(* You must justify this!  It holds e.g. if j0 = j. *)
+  have AT0: "Lval_at as s oL'' j0 = Lval_at as s oL' j0"
+  sorry
+
+  have Good_oL''_oL'_eq:
+    "Good as s oL'' ((!) ?x) = Good as s oL' ((!) ?x)"
+    by (rule bridge_oLpp[OF j0L OFF AT0])
+
   have Good_y_oL'_eq:
     "Good as s ((!) y) ((!) ?x) = Good as s oL' ((!) ?x)"
-    using Good_y_oL''_eq bridge_oLpp by simp
+    using Good_char_encR Good_oL''_oL'_eq lev_equiv by auto
 
   have seenL_sub:
     "seenL_run ((!) ?x) ((!) ?x) (T0 as s) ⊆ Base.read0 M ?x"
