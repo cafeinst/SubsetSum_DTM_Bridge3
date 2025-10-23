@@ -33,13 +33,9 @@ proof -
   show ?thesis using j0L imp by blast
 qed
 
-definition lift_sym :: "(nat ⇒ int) ⇒ nat ⇒ bool"
-  where "lift_sym f ≡ (λi. f i ≠ 0)"
-
 lemma correct_T0_LR:
-  fixes L R :: "nat ⇒ int"
-  shows "run (lift_sym L) (lift_sym R) (T0 as s) =
-         Good as s (lift_sym L) (lift_sym R)"
+  fixes L R :: "nat ⇒ bool"
+  shows "run L R (T0 as s) = Good as s L R"
   sorry
 
 lemma bridge_oLpp:
@@ -362,11 +358,6 @@ proof (rule ccontr)
     "Good as s ((!) y) ((!) ?x) = Good as s oL'' ((!) ?x)"
     using Good_char_encR lev_equiv by simp
 
- (* Good(y,enc) = Good(oL'',enc) from lev_equiv *)
-  have Good_y_oL''_eq:
-    "Good as s ((!) y) ((!) ?x) = Good as s oL'' ((!) ?x)"
-    using Good_char_encR lev_equiv by simp
-
   (* Bridge oL'' ↔ oL' (top-level lemma) *)
   have Good_y_oL'_eq:
     "Good as s ((!) y) ((!) ?x) = Good as s oL' ((!) ?x)"
@@ -396,10 +387,12 @@ proof (rule ccontr)
     "run ((!) ?x) ((!) ?x) (T0 as s) = run ((!) y) ((!) ?x) (T0 as s)"
     by (rule run_agrees_on_seen[OF agree_on_seenL agree_on_seenR])
 
+  (* Convert Good to run, use run equality, convert back to Good *)
   have Good_eq_baseline:
     "Good as s ((!) y) ((!) ?x) = Good as s ((!) ?x) ((!) ?x)"
   proof -
-    have "Good as s ((!) y) ((!) ?x) = run ((!) y) ((!) ?x) (T0 as s)"
+    have "Good as s ((!) y) ((!) ?x) =
+          run ((!) y) ((!) ?x) (T0 as s)"
       by (rule correct_T0_LR[symmetric])
     also have "... = run ((!) ?x) ((!) ?x) (T0 as s)"
       using RUN_EQ by simp
@@ -408,6 +401,7 @@ proof (rule ccontr)
     finally show ?thesis .
   qed
 
+  (* Final contradiction with the flip lemma *)
   from Good_y_oL'_eq Good_eq_baseline have
     "Good as s oL' ((!) ?x) = Good as s ((!) ?x) ((!) ?x)" by simp
   with FLP show False by simp
