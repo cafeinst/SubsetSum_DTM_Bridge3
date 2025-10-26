@@ -33,15 +33,74 @@ proof -
   show ?thesis using j0L imp by blast
 qed
 
-(*lemma correct_T0_LR:
+lemma correct_T_drive:
   fixes L R :: "nat ⇒ bool"
-  shows "run L R (T0 as s) = Good as s L R"
-  sorry*)
+  shows
+  "final_acc (drive (steps M (enc as s kk)) (conf M (enc as s kk) 0) L)
+   = run L R (T as s)"
+proof -
+  have "final_acc (drive (steps M (enc as s kk)) (conf M (enc as s kk) 0) L)
+        = run L R (tm_to_dtr' head0 stepf final_acc
+                       (steps M (enc as s kk)) (conf M (enc as s kk) 0))"
+    by (simp add: run_tm_to_dtr'[symmetric])
+  also have "... = run L R (T as s)"
+    by (simp add: T_def)
+  finally show ?thesis .
+qed
 
-lemma correct_T0_LR:
+lemma correct_T_drive_enc:
+  "final_acc (drive (steps M (enc as s kk)) (conf M (enc as s kk) 0)
+                    ((!) (enc as s kk)))
+   = good as s ((!) (enc as s kk)) ((!) (enc as s kk))"
+  using correct_T_drive correct_T by simp
+
+(* generic T0→T bridge for run only *)
+lemma correct_T0_run_bridge:
   fixes L R :: "nat ⇒ bool"
-  shows "run L R (T0 as s) = Good as s L R"
-  sorry
+  shows "run L R (T0 as s) = run L R (T as s)"
+proof -
+  have "run L R (T0 as s)
+        = final_acc (drive (steps M (enc as s kk)) (conf M (enc as s kk) 0) L)"
+    by (simp add: run_tm_to_dtr' T0_def)
+  also have "... = run L R (T as s)"
+    by (rule correct_T_drive)
+  finally show ?thesis .
+qed
+
+(* was named 'correct_T' before; rename to avoid shadowing *)
+lemma correct_T_enc:
+  "run (λi. (enc as s kk) ! i) (λj. (enc as s kk) ! j) (T as s)
+   = good as s (λi. (enc as s kk) ! i) (λj. (enc as s kk) ! j)"
+proof -
+  have "run (λi. (enc as s kk) ! i) (λj. (enc as s kk) ! j) (T as s)
+        = run ((!) (enc as s kk)) ((!) (enc as s kk))
+             (tm_to_dtr' head0 stepf final_acc (steps M (enc as s kk))
+                (conf M (enc as s kk) 0))"
+    by (simp add: T_def)
+  also have "… = accepts M (enc as s kk)"
+    by (simp add: tm_to_dtr_accepts)
+  also have "… = good as s (λi. (enc as s kk) ! i) (λj. (enc as s kk) ! j)"
+    by (simp add: correctness)
+  finally show ?thesis .
+qed
+
+lemma correct_T_LR_enc:
+  "run ((!) (enc as s kk)) ((!) (enc as s kk)) (T as s)
+   = good as s ((!) (enc as s kk)) ((!) (enc as s kk))"
+  by (simp add: correct_T_enc)
+
+lemma correct_T0_enc:
+  "run ((!) (enc as s kk)) ((!) (enc as s kk)) (T0 as s)
+   = Good as s ((!) (enc as s kk)) ((!) (enc as s kk))"
+proof -
+  have "run ((!) (enc as s kk)) ((!) (enc as s kk)) (T0 as s)
+        = run ((!) (enc as s kk)) ((!) (enc as s kk)) (T as s)"
+    by (rule correct_T0_run_bridge)
+  also have "... = good as s ((!) (enc as s kk)) ((!) (enc as s kk))"
+    by (rule correct_T_LR_enc)
+  finally show ?thesis
+    by (simp add: Good_def)   (* RHS = run enc enc (T as s) *)
+qed
 
 lemma bridge_oLpp_param:
   fixes j0 :: nat
@@ -329,6 +388,45 @@ proof (rule ccontr)
       by (simp add: Lval_eq_of_slice_eq[OF slice, unfolded a'_def w'_def])
   qed
 
+(* equality of L-values for all blocks except j0 *)
+  have Lvals_y_eq_oL''_off_j0:
+    "⋀j'. j' < length (enumL as s kk) ⟹ j' ≠ j0 ⟹
+        Lval_at as s ((!) y) j' = Lval_at as s oL'' j'"
+  proof -
+    fix j' assume j'L: "j' < length (enumL as s kk)" and ne0: "j' ≠ j0"
+    consider (J) "j' = j" | (OFF) "j' ≠ j ∧ j' ≠ j0" using ne0 by auto
+    then show "Lval_at as s ((!) y) j' = Lval_at as s oL'' j'"
+    proof cases
+      case J
+    (* equality on the flipped block j, proved earlier *)
+      show ?thesis by (simp add: Lval_y_eq_oL''_at_j J)
+    next
+      case OFF
+      then have nej: "j' ≠ j" and ne0': "j' ≠ j0" by auto
+      have Ay: "Lval_at as s ((!) y) j' = Lval_at as s oL' j'"
+        by (rule Lval_eq_all_off[OF j'L nej ne0'])
+      have Ao: "Lval_at as s oL'' j' = Lval_at as s oL' j'"
+        by (rule Lval_oL''_oL'_off_j[OF j'L nej])
+      from Ay Ao show ?thesis by simp
+    qed
+  qed
+
+  (* off–blocks helper: when j' is neither j nor j0 *)
+  have Lval_eq_off:
+    "⟦ j' < length (enumL as s kk); j' ≠ j; j' ≠ j0 ⟧
+     ⟹ Lval_at as s ((!) y) j' = Lval_at as s oL'' j'"
+  for j'
+  proof -
+    assume j'L: "j' < length (enumL as s kk)"
+    assume nej: "j' ≠ j"
+    assume ne0: "j' ≠ j0"
+    have Ay: "Lval_at as s ((!) y) j' = Lval_at as s oL' j'"
+      by (rule Lval_eq_all_off[OF j'L nej ne0])
+    have Ao: "Lval_at as s oL'' j' = Lval_at as s oL' j'"
+      by (rule Lval_oL''_oL'_off_j[OF j'L nej])
+    from Ay Ao show "Lval_at as s ((!) y) j' = Lval_at as s oL'' j'" by simp
+  qed
+
   have Lval_oL''_eq_y_at_j:
     "Lval_at as s oL'' j = Lval_at as s ((!) y) j"
     using Lval_y_eq_oL''_at_j by simp
@@ -407,16 +505,118 @@ proof (rule ccontr)
     from bridge_oLpp_param[of j, OF jL' OFFj ATj] show ?thesis .
   qed
 
-  (* Now combine with your lev_equiv and Good_char_encR as before *)
-  have MISSy: "Lval_at as s ((!) y) j0 ∉ set (enumR as s kk)"
-    sorry
+(* equality of L-values for all blocks except j0 *)
+  have Lvals_y_eq_oL''_off_j0:
+    "⋀j'. j' < length (enumL as s kk) ⟹ j' ≠ j0 ⟹
+        Lval_at as s ((!) y) j' = Lval_at as s oL'' j'"
+  proof -
+    fix j' assume j'L: "j' < length (enumL as s kk)" and ne0: "j' ≠ j0"
+    consider (J) "j' = j" | (OFF) "j' ≠ j ∧ j' ≠ j0" using ne0 by blast
+    then show "Lval_at as s ((!) y) j' = Lval_at as s oL'' j'"
+    proof cases
+      case J
+      then show ?thesis by (simp add: Lval_y_eq_oL''_at_j)
+    next
+      case OFF
+      then have nej: "j' ≠ j" and ne0': "j' ≠ j0" by auto
+      have Ay: "Lval_at as s ((!) y) j' = Lval_at as s oL' j'"
+        by (rule Lval_eq_all_off[OF j'L nej ne0'])
+      have Ao: "Lval_at as s oL'' j' = Lval_at as s oL' j'"
+        by (rule Lval_oL''_oL'_off_j[OF j'L nej])
+      from Ay Ao show ?thesis by simp
+    qed
+  qed
 
-  have MISSo: "Lval_at as s oL'' j0 ∉ set (enumR as s kk)"
-    sorry
+(* existential equivalence guarded by “miss at j0” on both sides *)
+  have ex_equiv:
+    "(∃j'<length (enumL as s kk).
+      Lval_at as s ((!) y) j' ∈ RHS (e_k as s kk) (length as)) ⟷
+      (∃j'<length (enumL as s kk).
+      Lval_at as s oL''   j' ∈ RHS (e_k as s kk) (length as))"
+    if MISSy: "Lval_at as s ((!) y) j0 ∉ RHS (e_k as s kk) (length as)"
+      and MISSo: "Lval_at as s oL''   j0 ∉ RHS (e_k as s kk) (length as)"
+    proof
+      assume "∃j'<length (enumL as s kk).
+           Lval_at as s ((!) y) j' ∈ RHS (e_k as s kk) (length as)"
+      then obtain j' where j'L: "j' < length (enumL as s kk)"
+                    and Hy: "Lval_at as s ((!) y) j' ∈ RHS (e_k as s kk) (length as)"
+        by blast
+      consider (J) "j' = j" | (J0) "j' = j0" | (OFF) "j' ≠ j ∧ j' ≠ j0" by blast
+      then show "∃j'<length (enumL as s kk).
+             Lval_at as s oL'' j' ∈ RHS (e_k as s kk) (length as)"
+      proof cases
+        case J
+        have "Lval_at as s ((!) y) j' = Lval_at as s oL'' j'"
+          using J Lval_y_eq_oL''_at_j by simp
+        with Hy j'L show ?thesis by metis
+      next
+        case J0
+        with MISSy Hy show ?thesis by simp
+      next
+        case OFF
+        from OFF have nej: "j' ≠ j" and ne0: "j' ≠ j0" by auto
+        have Ay: "Lval_at as s ((!) y) j' = Lval_at as s oL' j'"
+          by (simp add: Lval_eq_all_off j'L nej ne0)
+        have Ao: "Lval_at as s oL'' j' = Lval_at as s oL' j'"
+          by (simp add: Lval_oL''_oL'_off_j j'L nej)
+        from Hy Ay Ao have "Lval_at as s oL'' j' ∈ RHS (e_k as s kk) (length as)" by simp
+        with j'L show ?thesis by blast
+      qed
+    next
+      assume "∃j'<length (enumL as s kk).
+           Lval_at as s oL'' j' ∈ RHS (e_k as s kk) (length as)"
+      then obtain j' where j'L: "j' < length (enumL as s kk)"
+                    and Ho: "Lval_at as s oL'' j' ∈ RHS (e_k as s kk) (length as)"
+        by blast
+      consider (J) "j' = j" | (J0) "j' = j0" | (OFF) "j' ≠ j ∧ j' ≠ j0" by blast
+      then show "∃j'<length (enumL as s kk).
+             Lval_at as s ((!) y) j' ∈ RHS (e_k as s kk) (length as)"
+    proof cases
+      case J
+      have "Lval_at as s ((!) y) j' = Lval_at as s oL'' j'"
+       using J Lval_y_eq_oL''_at_j by simp
+      with Ho j'L show ?thesis by metis
+    next
+      case J0
+      with MISSo Ho show ?thesis by simp
+    next
+      case OFF
+      from OFF have nej: "j' ≠ j" and ne0: "j' ≠ j0" by auto
+      have Ao: "Lval_at as s oL'' j' = Lval_at as s oL' j'"
+        by (simp add: Lval_oL''_oL'_off_j j'L nej)
+      have Ay: "Lval_at as s ((!) y) j' = Lval_at as s oL' j'"
+        by (simp add: Lval_eq_all_off j'L nej ne0)
+      from Ho Ao Ay have "Lval_at as s ((!) y) j' ∈ RHS (e_k as s kk) (length as)" by simp
+      with j'L show ?thesis by blast
+    qed
+  qed
+
+(* now the Good equality is immediate *)
+  have Good_y_oL''_eq:
+    "Good as s ((!) y) ((!) (enc as s kk)) =
+    Good as s oL''    ((!) (enc as s kk))"
+    if MISSy: "Lval_at as s ((!) y) j0 ∉ RHS (e_k as s kk) (length as)"
+      and MISSo: "Lval_at as s oL''   j0 ∉ RHS (e_k as s kk) (length as)"
+  proof -
+    have EX:
+      "(∃j'<length (enumL as s kk).
+        Lval_at as s ((!) y) j' ∈ RHS (e_k as s kk) (length as)) =
+      (∃j'<length (enumL as s kk).
+        Lval_at as s oL''    j' ∈ RHS (e_k as s kk) (length as))"
+      by (rule ex_equiv[OF MISSy MISSo])
+    show ?thesis
+      unfolding Good_char_encR
+      using EX enumR_set Good_char_encR by force
+  qed
 
   have Good_y_oL'_eq:
     "Good as s ((!) y) ((!) ?x) = Good as s oL' ((!) ?x)"
-    using Good_char_encR Good_oL''_oL'_eq lev_equiv[OF MISSy MISSo] by auto
+    if MISSy: "Lval_at as s ((!) y) j0 ∉ RHS (e_k as s kk) (length as)"
+      and MISSo: "Lval_at as s oL''   j0 ∉ RHS (e_k as s kk) (length as)"
+  proof -
+    from Good_y_oL''_eq[OF MISSy MISSo] Good_oL''_oL'_eq
+    show ?thesis by simp
+  qed
 
   have seenL_sub:
     "seenL_run ((!) ?x) ((!) ?x) (T0 as s) ⊆ Base.read0 M ?x"
@@ -442,25 +642,122 @@ proof (rule ccontr)
     "run ((!) ?x) ((!) ?x) (T0 as s) = run ((!) y) ((!) ?x) (T0 as s)"
     by (rule run_agrees_on_seen[OF agree_on_seenL agree_on_seenR])
 
-  (* Convert Good to run, use run equality, convert back to Good *)
+(* First, lift RUN_EQ (which is for T0) up to T *)
+  have RUN_EQ_T:
+    "run ((!) y)  ((!) ?x) (T as s) =
+    run ((!) ?x) ((!) ?x) (T as s)"
+  proof -
+    have "run ((!) y) ((!) ?x) (T as s)
+        = run ((!) y) ((!) ?x) (T0 as s)"
+      by (rule correct_T0_run_bridge[symmetric])
+    also have "... = run ((!) ?x) ((!) ?x) (T0 as s)"
+      using RUN_EQ by simp
+    also have "... = run ((!) ?x) ((!) ?x) (T as s)"
+      by (rule correct_T0_run_bridge)
+    finally show ?thesis .
+  qed
+
+(* Now prove the baseline equality without correct_T0_LR *)
   have Good_eq_baseline:
     "Good as s ((!) y) ((!) ?x) = Good as s ((!) ?x) ((!) ?x)"
   proof -
-    have "Good as s ((!) y) ((!) ?x) =
-          run ((!) y) ((!) ?x) (T0 as s)"
-      by (rule correct_T0_LR[symmetric])
-    also have "... = run ((!) ?x) ((!) ?x) (T0 as s)"
-      using RUN_EQ by simp
-    also have "... = Good as s ((!) ?x) ((!) ?x)"
-      by (rule correct_T0_LR)
-    finally show ?thesis .
+    have LHS:
+      "Good as s ((!) y) ((!) ?x)
+       ⟷ (∃j'<length (enumL as s kk).
+            Lval_at as s ((!) y) j' ∈ set (enumR as s kk))"
+      using Good_char_encR by simp
+    have RHS:
+      "Good as s ((!) ?x) ((!) ?x)
+       ⟷ (∃j'<length (enumL as s kk).
+            Lval_at as s ((!) ?x) j' ∈ set (enumR as s kk))"
+      using Good_char_encR by simp
+    (* reduce to an ∃-equivalence *)
+    have EX_EQ:
+      "(∃j'<length (enumL as s kk).
+          Lval_at as s ((!) y) j' ∈ set (enumR as s kk)) ⟷
+       (∃j'<length (enumL as s kk).
+          Lval_at as s ((!) ?x) j' ∈ set (enumR as s kk))"
+    proof
+    (* → direction: y-hit ⇒ enc-hit *)
+    assume H: "∃j'<length (enumL as s kk).
+                 Lval_at as s ((!) y) j' ∈ set (enumR as s kk)"
+    then obtain j' where j'L: "j' < length (enumL as s kk)"
+      and Hy: "Lval_at as s ((!) y) j' ∈ set (enumR as s kk)" by blast
+    show "∃j''<length (enumL as s kk).
+            Lval_at as s ((!) ?x) j'' ∈ set (enumR as s kk)"
+    proof (cases "j' = j")
+      case True
+      (* flipped block case *)
+(* from the “flip” block equalities *)
+      have Y_eq_oL'': "Lval_at as s ((!) y) j' = Lval_at as s oL'' j'"
+        using True Lval_y_eq_oL''_at_j by simp
+      have oL''_eq_oL': "Lval_at as s oL'' j' = Lval_at as s oL' j'"
+        using True ATj by simp
+
+(* relate oL' and enc on the j-block *)
+      have oL'_eq_x_on_j:
+        "Lval_at as s oL' j' = Lval_at as s ((!) ?x) j'"
+      proof (cases "j = j0")
+        case False
+  (* you already defined slice_oL'_x_j and showed the slice equality on j *)
+        have "Lval_at as s oL' j = Lval_at as s ((!) ?x) j"
+          by (simp add: Lval_eq_of_slice_eq[OF slice_oL'_x_j] a_def w_def)
+        thus ?thesis using True by simp
+      next
+        case True
+  (* on the special block j0, reuse your equality via y *)
+        have "Lval_at as s ((!) ?x) j = Lval_at as s ((!) y) j"
+          using True Lval_oL''_eq_y_at_j Lval_y_eq_oL''_at_j by simp
+        thus ?thesis using True Lval_y_j by simp
+      qed
+
+(* now carry the hit along the equalities *)
+      have HitX: "Lval_at as s ((!) ?x) j' ∈ set (enumR as s kk)"
+        using Hy Y_eq_oL'' oL''_eq_oL' oL'_eq_x_on_j by simp
+      next
+        case False
+      (* off the flipped block *)
+        have HitX: "Lval_at as s ((!) ?x) j' ∈ set (enumR as s kk)"
+          using Hy False j'L
+              (* FILL IN: off-block chain y → oL' → enc on j' *)
+          by simp
+        show ?thesis by (intro exI[of _ j'] conjI) (use j'L HitX in auto)
+      qed
+    next
+    (* ← direction: enc-hit ⇒ y-hit *)
+      assume H: "∃j'<length (enumL as s kk).
+                 Lval_at as s ((!) ?x) j' ∈ set (enumR as s kk)"
+      then obtain j' where j'L: "j' < length (enumL as s kk)"
+        and Hx: "Lval_at as s ((!) ?x) j' ∈ set (enumR as s kk)" by blast
+      show "∃j''<length (enumL as s kk).
+            Lval_at as s ((!) y) j'' ∈ set (enumR as s kk)"
+      proof (cases "j' = j")
+        case True
+      (* flipped block case *)
+        have HitY: "Lval_at as s ((!) y) j' ∈ set (enumR as s kk)"
+          using Hx True
+              (* FILL IN: equality on j to transfer enc → y, e.g.
+                 Lval_y_eq_oL''_at_j plus the converse bridge *)
+          by simp
+        show ?thesis by (intro exI[of _ j'] conjI) (use j'L HitY in auto)
+      next
+        case False
+      (* off the flipped block *)
+        have HitY: "Lval_at as s ((!) y) j' ∈ set (enumR as s kk)"
+          using Hx False j'L
+              (* FILL IN: off-block chain enc → oL' → y on j' *)
+          by simp
+        show ?thesis by (intro exI[of _ j'] conjI) (use j'L HitY in auto)
+      qed
+      show ?thesis by (simp add: LHS RHS EX_EQ)
+    qed
   qed
 
   (* Final contradiction with the flip lemma *)
   from Good_y_oL'_eq Good_eq_baseline have
     "Good as s oL' ((!) ?x) = Good as s ((!) ?x) ((!) ?x)" by simp
   with FLP show False by simp
-qed
+qed 
 
 lemma DSS_unique_L_witness:
   assumes le:   "kk ≤ length as"
